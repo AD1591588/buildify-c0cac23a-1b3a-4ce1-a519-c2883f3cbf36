@@ -9,6 +9,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Switch } from './ui/switch';
+import { Checkbox } from './ui/checkbox';
 import { useToast } from '../components/ui/use-toast';
 
 const ModelUploader: React.FC = () => {
@@ -21,8 +23,15 @@ const ModelUploader: React.FC = () => {
   const [category, setCategory] = useState('');
   const [modelFile, setModelFile] = useState<File | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [undressPreviewFile, setUndressPreviewFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Undress feature options
+  const [supportsUndress, setSupportsUndress] = useState(false);
+  const [outerLayer, setOuterLayer] = useState(true);
+  const [innerLayer, setInnerLayer] = useState(false);
+  const [baseLayer, setBaseLayer] = useState(false);
 
   const handleModelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -64,6 +73,26 @@ const ModelUploader: React.FC = () => {
     }
   };
 
+  const handleUndressPreviewFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      // Check if file is an image
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      
+      if (!validExtensions.includes(fileExtension)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a valid image file (JPG, PNG, GIF, WEBP)",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setUndressPreviewFile(file);
+    }
+  };
+
   const handleUpload = async () => {
     if (!user) {
       toast({
@@ -84,6 +113,15 @@ const ModelUploader: React.FC = () => {
       return;
     }
 
+    if (supportsUndress && !outerLayer && !innerLayer && !baseLayer) {
+      toast({
+        title: "Missing layer information",
+        description: "Please select at least one layer for the undress feature",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
     
@@ -96,7 +134,7 @@ const ModelUploader: React.FC = () => {
           cacheControl: '3600',
           upsert: false,
           onUploadProgress: (progress) => {
-            setUploadProgress(Math.round((progress.loaded / progress.total) * 50));
+            setUploadProgress(Math.round((progress.loaded / progress.total) * 30));
           },
         });
 
@@ -108,6 +146,7 @@ const ModelUploader: React.FC = () => {
         .getPublicUrl(modelFileName);
 
       let thumbnailUrl = null;
+      let undressPreviewUrl = null;
       
       // Upload thumbnail if provided
       if (thumbnailFile) {
@@ -118,7 +157,7 @@ const ModelUploader: React.FC = () => {
             cacheControl: '3600',
             upsert: false,
             onUploadProgress: (progress) => {
-              setUploadProgress(50 + Math.round((progress.loaded / progress.total) * 50));
+              setUploadProgress(30 + Math.round((progress.loaded / progress.total) * 30));
             },
           });
 
@@ -131,6 +170,43 @@ const ModelUploader: React.FC = () => {
           
         thumbnailUrl = thumbUrl.publicUrl;
       }
+      
+      // Upload undress preview if provided
+      if (supportsUndress && undressPreviewFile) {
+        const undressPreviewFileName = `${user.id}/${Date.now()}_undress_${undressPreviewFile.name}`;
+        const { data: previewData, error: previewError } = await supabase.storage
+          .from('thumbnails')
+          .upload(undressPreviewFileName, undressPreviewFile, {
+            cacheControl: '3600',
+            upsert: false,
+            onUploadProgress: (progress) => {
+              setUploadProgress(60 + Math.round((progress.loaded / progress.total) * 30));
+            },
+          });
+
+        if (previewError) throw previewError;
+
+        // Get public URL for the undress preview
+        const { data: previewUrl } = supabase.storage
+          .from('thumbnails')
+          .getPublicUrl(undressPreviewFileName);
+          
+        undressPreviewUrl = previewUrl.publicUrl;
+      }
+
+      // Prepare undress options if enabled
+      let undressOptions = null;
+      if (supportsUndress) {
+        const layers = [];
+        if (outerLayer) layers.push('outer');
+        if (innerLayer) layers.push('inner');
+        if (baseLayer) layers.push('base');
+        
+        undressOptions = {
+          layers,
+          preview_url: undressPreviewUrl
+        };
+      }
 
       // Save model information to database
       const { data: modelRecord, error: dbError } = await supabase
@@ -142,6 +218,8 @@ const ModelUploader: React.FC = () => {
           category,
           model_url: modelUrl.publicUrl,
           thumbnail_url: thumbnailUrl,
+          supports_undress: supportsUndress,
+          undress_options: undressOptions
         })
         .select()
         .single();
@@ -244,6 +322,70 @@ const ModelUploader: React.FC = () => {
             </div>
           </div>
           
+          <div className="border-t pt-4 mt-6">
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="supports-undress" 
+                checked={supportsUndress}
+                onCheckedChange={setSupportsUndress}
+              />
+              <Label htmlFor="supports-undress">Enable Undress Feature</Label>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              The undress feature allows users to see how this item looks without other layers
+            </p>
+          </div>
+          
+          {supportsUndress && (
+            <div className="pl-6 border-l-2 border-indigo-100">
+              <h3 className="font-medium mb-2">Undress Feature Options</h3>
+              
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="outer-layer" 
+                    checked={outerLayer}
+                    onCheckedChange={(checked) => setOuterLayer(checked as boolean)}
+                  />
+                  <Label htmlFor="outer-layer">Outer Layer</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="inner-layer" 
+                    checked={innerLayer}
+                    onCheckedChange={(checked) => setInnerLayer(checked as boolean)}
+                  />
+                  <Label htmlFor="inner-layer">Inner Layer</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="base-layer" 
+                    checked={baseLayer}
+                    onCheckedChange={(checked) => setBaseLayer(checked as boolean)}
+                  />
+                  <Label htmlFor="base-layer">Base Layer</Label>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <Label htmlFor="undressPreviewFile">Undress Preview Image</Label>
+                <div className="mt-1">
+                  <Input
+                    id="undressPreviewFile"
+                    type="file"
+                    onChange={handleUndressPreviewFileChange}
+                    accept="image/*"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Optional: Upload a preview image for the undress feature
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {uploading && (
             <div className="mt-4">
               <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -278,5 +420,7 @@ const ModelUploader: React.FC = () => {
     </Card>
   );
 };
+
+export default ModelUploader;
 
 export default ModelUploader;

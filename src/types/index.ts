@@ -1,4 +1,9 @@
 
+export interface UndressOptions {
+  layers: string[];
+  preview_url?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -11,6 +16,8 @@ export interface Product {
   updated_at: string;
   user_id?: string;
   is_public?: boolean;
+  supports_undress?: boolean;
+  undress_options?: UndressOptions;
 }
 
 export interface UserModel {
@@ -23,6 +30,8 @@ export interface UserModel {
   thumbnail_url?: string;
   created_at: string;
   updated_at: string;
+  supports_undress?: boolean;
+  undress_options?: UndressOptions;
 }
 
 export interface TryOnHistory {
