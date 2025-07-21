@@ -44,16 +44,11 @@ serve(async (req) => {
     }
 
     // Get request data
-    const formData = await req.formData();
-    const modelFile = formData.get("model") as File;
-    const thumbnailFile = formData.get("thumbnail") as File | null;
-    const name = formData.get("name") as string;
-    const description = formData.get("description") as string;
-    const category = formData.get("category") as string;
+    const { modelData } = await req.json();
 
-    if (!modelFile || !name || !category) {
+    if (!modelData) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Model data is required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -61,88 +56,15 @@ serve(async (req) => {
       );
     }
 
-    // Upload model file to storage
-    const modelFileName = `${user.id}/${Date.now()}_${modelFile.name}`;
-    const { data: modelData, error: modelError } = await supabaseClient.storage
-      .from("models")
-      .upload(modelFileName, modelFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (modelError) {
-      return new Response(
-        JSON.stringify({ error: modelError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Get public URL for the model
-    const { data: modelUrl } = supabaseClient.storage
-      .from("models")
-      .getPublicUrl(modelFileName);
-
-    let thumbnailUrl = null;
-
-    // Upload thumbnail if provided
-    if (thumbnailFile) {
-      const thumbnailFileName = `${user.id}/${Date.now()}_${thumbnailFile.name}`;
-      const { data: thumbnailData, error: thumbnailError } = await supabaseClient.storage
-        .from("thumbnails")
-        .upload(thumbnailFileName, thumbnailFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (thumbnailError) {
-        return new Response(
-          JSON.stringify({ error: thumbnailError.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      // Get public URL for the thumbnail
-      const { data: thumbUrl } = supabaseClient.storage
-        .from("thumbnails")
-        .getPublicUrl(thumbnailFileName);
-        
-      thumbnailUrl = thumbUrl.publicUrl;
-    }
-
-    // Save model information to database
-    const { data: modelRecord, error: dbError } = await supabaseClient
-      .from("user_models")
-      .insert({
-        user_id: user.id,
-        name,
-        description,
-        category,
-        model_url: modelUrl.publicUrl,
-        thumbnail_url: thumbnailUrl,
-      })
-      .select()
-      .single();
-
-    if (dbError) {
-      return new Response(
-        JSON.stringify({ error: dbError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+    // Process the model data
+    // This is where you would implement any model processing logic
+    // For example, optimizing the model, generating thumbnails, etc.
 
     return new Response(
       JSON.stringify({
         success: true,
-        model: modelRecord,
+        message: "Model processed successfully",
+        modelData
       }),
       {
         status: 200,

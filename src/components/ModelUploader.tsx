@@ -9,7 +9,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { useToast } from './ui/use-toast';
+import { useToast } from '../components/ui/use-toast';
 
 const ModelUploader: React.FC = () => {
   const { user } = useAuth();
