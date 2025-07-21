@@ -13,6 +13,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import UploadModelPage from './pages/UploadModelPage';
+import CustomTryOnPage from './pages/CustomTryOnPage';
 import './App.css';
 
 function App() {
@@ -28,6 +30,8 @@ function App() {
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/products/:id" element={<ProductDetailPage />} />
                 <Route path="/try-on/:id" element={<TryOnPage />} />
+                <Route path="/upload-model" element={<UploadModelPage />} />
+                <Route path="/custom-try-on/:modelId" element={<CustomTryOnPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/profile" element={<ProfilePage />} />

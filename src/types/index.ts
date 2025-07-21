@@ -9,6 +9,20 @@ export interface Product {
   model_url: string;
   created_at: string;
   updated_at: string;
+  user_id?: string;
+  is_public?: boolean;
+}
+
+export interface UserModel {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  category: string;
+  model_url: string;
+  thumbnail_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TryOnHistory {
@@ -18,3 +32,5 @@ export interface TryOnHistory {
   created_at: string;
   product?: Product;
 }
+
+export type ProductCategory = 'all' | 'sunglasses' | 'glasses' | 'dresses' | 'shirts' | 'suits' | 'custom';
