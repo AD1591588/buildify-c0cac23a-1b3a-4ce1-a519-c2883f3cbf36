@@ -4,6 +4,13 @@ export interface UndressOptions {
   preview_url?: string;
 }
 
+export interface UndressLevel {
+  level: number;
+  name: string;
+  description: string;
+  preview_url?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -18,6 +25,8 @@ export interface Product {
   is_public?: boolean;
   supports_undress?: boolean;
   undress_options?: UndressOptions;
+  undress_level?: number;
+  undress_sequence?: UndressLevel[];
 }
 
 export interface UserModel {
@@ -32,6 +41,8 @@ export interface UserModel {
   updated_at: string;
   supports_undress?: boolean;
   undress_options?: UndressOptions;
+  undress_level?: number;
+  undress_sequence?: UndressLevel[];
 }
 
 export interface TryOnHistory {

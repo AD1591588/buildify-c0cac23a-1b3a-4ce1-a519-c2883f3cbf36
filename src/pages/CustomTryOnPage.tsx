@@ -3,13 +3,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserModel } from '../types';
+import { UserModel, UndressLevel } from '../types';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { useToast } from '../components/ui/use-toast';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Slider } from '../components/ui/slider';
 
 const CustomTryOnPage: React.FC = () => {
   const { modelId } = useParams<{ modelId: string }>();
@@ -21,6 +22,8 @@ const CustomTryOnPage: React.FC = () => {
   const [cameraActive, setCameraActive] = useState(false);
   const [undressMode, setUndressMode] = useState(false);
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
+  const [currentUndressLevel, setCurrentUndressLevel] = useState<number>(1);
+  const [currentUndressView, setCurrentUndressView] = useState<UndressLevel | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -50,11 +53,23 @@ const CustomTryOnPage: React.FC = () => {
           return;
         }
         
+        // Parse undress_sequence if it's a string
+        if (data.undress_sequence && typeof data.undress_sequence === 'string') {
+          data.undress_sequence = JSON.parse(data.undress_sequence);
+        }
+        
         setModel(data);
         
         // Set default layer if model supports undress
-        if (data.supports_undress && data.undress_options?.layers?.length > 0) {
-          setCurrentLayer(data.undress_options.layers[0]);
+        if (data.supports_undress) {
+          if (data.undress_options?.layers?.length > 0) {
+            setCurrentLayer(data.undress_options.layers[0]);
+          }
+          
+          if (data.undress_sequence && data.undress_sequence.length > 0) {
+            setCurrentUndressLevel(1);
+            setCurrentUndressView(data.undress_sequence[0]);
+          }
         }
       } catch (error) {
         console.error('Error fetching model:', error);
@@ -128,10 +143,17 @@ const CustomTryOnPage: React.FC = () => {
         try {
           const imageDataUrl = canvas.toDataURL('image/png');
           
-          // Here you could save the snapshot or implement sharing functionality
+          // Create a download link for the snapshot
+          const downloadLink = document.createElement('a');
+          downloadLink.href = imageDataUrl;
+          downloadLink.download = `${model?.name || 'model'}_try_on_${Date.now()}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
           toast({
             title: "Snapshot taken",
-            description: "Your try-on snapshot has been captured",
+            description: "Your try-on image has been downloaded",
           });
         } catch (error) {
           console.error('Error taking snapshot:', error);
@@ -173,6 +195,24 @@ const CustomTryOnPage: React.FC = () => {
       description: `Now showing the ${layer} layer`,
     });
   };
+  
+  const handleUndressLevelChange = (value: number[]) => {
+    if (!model?.undress_sequence) return;
+    
+    const level = value[0];
+    setCurrentUndressLevel(level);
+    
+    // Find the corresponding undress view
+    const view = model.undress_sequence.find(item => item.level === level);
+    if (view) {
+      setCurrentUndressView(view);
+      
+      toast({
+        title: "Undress level changed",
+        description: view.name,
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -194,6 +234,10 @@ const CustomTryOnPage: React.FC = () => {
       </div>
     );
   }
+  
+  // Determine if we should use the new undress sequence or the old layers approach
+  const hasUndressSequence = model.supports_undress && model.undress_sequence && model.undress_sequence.length > 0;
+  const hasUndressLayers = model.supports_undress && model.undress_options?.layers && model.undress_options.layers.length > 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -233,7 +277,13 @@ const CustomTryOnPage: React.FC = () => {
                 {model.supports_undress && (
                   <TabsContent value="undress">
                     <div className="aspect-square overflow-hidden rounded-md mb-4 bg-gray-100 flex items-center justify-center">
-                      {model.undress_options?.preview_url ? (
+                      {hasUndressSequence && currentUndressView?.preview_url ? (
+                        <img
+                          src={currentUndressView.preview_url}
+                          alt={`${model.name} - ${currentUndressView.name}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : model.undress_options?.preview_url ? (
                         <img
                           src={model.undress_options.preview_url}
                           alt={`${model.name} - Undress Preview`}
@@ -248,6 +298,25 @@ const CustomTryOnPage: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    
+                    {hasUndressSequence && (
+                      <div className="mt-4">
+                        <p className="text-sm font-medium mb-2">
+                          {currentUndressView?.name || "Undress Level"}:
+                        </p>
+                        <Slider
+                          value={[currentUndressLevel]}
+                          min={1}
+                          max={model.undress_level || 1}
+                          step={1}
+                          onValueChange={handleUndressLevelChange}
+                          className="mb-2"
+                        />
+                        <p className="text-xs text-gray-500">
+                          {currentUndressView?.description || "Adjust the slider to change the undress level"}
+                        </p>
+                      </div>
+                    )}
                   </TabsContent>
                 )}
               </Tabs>
@@ -270,7 +339,7 @@ const CustomTryOnPage: React.FC = () => {
                 </div>
               )}
               
-              {undressMode && model.supports_undress && model.undress_options?.layers && (
+              {undressMode && hasUndressLayers && !hasUndressSequence && (
                 <div className="mb-4">
                   <p className="text-sm font-medium mb-2">Select Layer:</p>
                   <div className="flex flex-wrap gap-2">
@@ -324,7 +393,10 @@ const CustomTryOnPage: React.FC = () => {
                 {/* Undress mode indicator */}
                 {cameraActive && undressMode && (
                   <div className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                    Undress Mode: {currentLayer || 'Default'}
+                    {hasUndressSequence && currentUndressView 
+                      ? `Undress: ${currentUndressView.name}`
+                      : `Undress Mode: ${currentLayer || 'Default'}`
+                    }
                   </div>
                 )}
                 
@@ -334,13 +406,13 @@ const CustomTryOnPage: React.FC = () => {
                     {/* AR model would be rendered here using a library like AR.js or Three.js */}
                     {/* For this example, we're just showing a placeholder */}
                     <div className="absolute bottom-4 left-4 text-white bg-black bg-opacity-50 px-2 py-1 rounded text-sm">
-                      AR Model: {model.name} {undressMode ? `(${currentLayer} layer)` : ''}
+                      AR Model: {model.name} {undressMode ? (hasUndressSequence && currentUndressView ? `(${currentUndressView.name})` : `(${currentLayer} layer)`) : ''}
                     </div>
                   </div>
                 )}
               </div>
               
-              <div className="flex justify-between mt-4">
+              <div className="flex flex-wrap justify-between mt-4 gap-2">
                 {cameraActive ? (
                   <>
                     <Button variant="outline" onClick={stopCamera}>
@@ -358,6 +430,22 @@ const CustomTryOnPage: React.FC = () => {
                         {undressMode ? "Disable Undress" : "Enable Undress"}
                       </Button>
                     )}
+                    
+                    {undressMode && hasUndressSequence && (
+                      <div className="w-full mt-2">
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Fully Dressed</span>
+                          <span>Undressed</span>
+                        </div>
+                        <Slider
+                          value={[currentUndressLevel]}
+                          min={1}
+                          max={model.undress_level || 1}
+                          step={1}
+                          onValueChange={handleUndressLevelChange}
+                        />
+                      </div>
+                    )}
                   </>
                 ) : (
                   <Button onClick={startCamera} className="w-full">
@@ -369,7 +457,10 @@ const CustomTryOnPage: React.FC = () => {
               <div className="mt-6">
                 <p className="text-sm text-gray-500">
                   Note: For the best experience, use this feature in a well-lit environment and position yourself in the center of the frame.
-                  {model.supports_undress && " This model supports the undress feature, allowing you to see how it looks without other layers."}
+                  {model.supports_undress && (hasUndressSequence 
+                    ? " This model supports the enhanced undress feature, allowing you to see different stages of undress."
+                    : " This model supports the undress feature, allowing you to see how it looks without other layers."
+                  )}
                 </p>
               </div>
             </Card>
@@ -382,5 +473,7 @@ const CustomTryOnPage: React.FC = () => {
     </div>
   );
 };
+
+export default CustomTryOnPage;
 
 export default CustomTryOnPage;

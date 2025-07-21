@@ -3,13 +3,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Product } from '../types';
+import { Product, UndressLevel } from '../types';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { useToast } from '../components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
+import { Slider } from '../components/ui/slider';
 
 const TryOnPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,8 @@ const TryOnPage: React.FC = () => {
   const [cameraPermission, setCameraPermission] = useState(false);
   const [undressMode, setUndressMode] = useState(false);
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
+  const [currentUndressLevel, setCurrentUndressLevel] = useState<number>(1);
+  const [currentUndressView, setCurrentUndressView] = useState<UndressLevel | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -53,11 +56,23 @@ const TryOnPage: React.FC = () => {
           throw error;
         }
         
+        // Parse undress_sequence if it's a string
+        if (data.undress_sequence && typeof data.undress_sequence === 'string') {
+          data.undress_sequence = JSON.parse(data.undress_sequence);
+        }
+        
         setProduct(data);
         
         // Set default layer if product supports undress
-        if (data.supports_undress && data.undress_options?.layers?.length > 0) {
-          setCurrentLayer(data.undress_options.layers[0]);
+        if (data.supports_undress) {
+          if (data.undress_options?.layers?.length > 0) {
+            setCurrentLayer(data.undress_options.layers[0]);
+          }
+          
+          if (data.undress_sequence && data.undress_sequence.length > 0) {
+            setCurrentUndressLevel(1);
+            setCurrentUndressView(data.undress_sequence[0]);
+          }
         }
         
         // Call the edge function to process the AR model and record try-on history
@@ -135,17 +150,38 @@ const TryOnPage: React.FC = () => {
         context.textAlign = 'center';
         
         let displayText = product.name;
-        if (undressMode && currentLayer) {
-          displayText += ` (${currentLayer} layer)`;
+        if (undressMode) {
+          if (currentUndressView) {
+            displayText += ` (${currentUndressView.name})`;
+          } else if (currentLayer) {
+            displayText += ` (${currentLayer} layer)`;
+          }
         }
         
         context.strokeText(displayText, canvas.width / 2, 50);
         context.fillText(displayText, canvas.width / 2, 50);
         
-        toast({
-          title: "Snapshot taken",
-          description: "You can save this image or continue trying on",
-        });
+        // Create a download link for the snapshot
+        try {
+          const imageDataUrl = canvas.toDataURL('image/png');
+          const downloadLink = document.createElement('a');
+          downloadLink.href = imageDataUrl;
+          downloadLink.download = `${product.name}_try_on_${Date.now()}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          toast({
+            title: "Snapshot taken",
+            description: "Your try-on image has been downloaded",
+          });
+        } catch (error) {
+          console.error('Error creating snapshot download:', error);
+          toast({
+            title: "Snapshot taken",
+            description: "You can save this image or continue trying on",
+          });
+        }
       }
     }
   };
@@ -178,6 +214,24 @@ const TryOnPage: React.FC = () => {
       description: `Now showing the ${layer} layer`,
     });
   };
+  
+  const handleUndressLevelChange = (value: number[]) => {
+    if (!product?.undress_sequence) return;
+    
+    const level = value[0];
+    setCurrentUndressLevel(level);
+    
+    // Find the corresponding undress view
+    const view = product.undress_sequence.find(item => item.level === level);
+    if (view) {
+      setCurrentUndressView(view);
+      
+      toast({
+        title: "Undress level changed",
+        description: view.name,
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -197,6 +251,10 @@ const TryOnPage: React.FC = () => {
       </div>
     );
   }
+
+  // Determine if we should use the new undress sequence or the old layers approach
+  const hasUndressSequence = product.supports_undress && product.undress_sequence && product.undress_sequence.length > 0;
+  const hasUndressLayers = product.supports_undress && product.undress_options?.layers && product.undress_options.layers.length > 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -227,12 +285,39 @@ const TryOnPage: React.FC = () => {
             {product.supports_undress && (
               <TabsContent value="undress">
                 <div className="aspect-square overflow-hidden rounded-md mb-4">
-                  <img
-                    src={product.undress_options?.preview_url || product.image_url}
-                    alt={`${product.name} - Undress Preview`}
-                    className="w-full h-full object-cover"
-                  />
+                  {hasUndressSequence && currentUndressView?.preview_url ? (
+                    <img
+                      src={currentUndressView.preview_url}
+                      alt={`${product.name} - ${currentUndressView.name}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={product.undress_options?.preview_url || product.image_url}
+                      alt={`${product.name} - Undress Preview`}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                 </div>
+                
+                {hasUndressSequence && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium mb-2">
+                      {currentUndressView?.name || "Undress Level"}:
+                    </p>
+                    <Slider
+                      value={[currentUndressLevel]}
+                      min={1}
+                      max={product.undress_level || 1}
+                      step={1}
+                      onValueChange={handleUndressLevelChange}
+                      className="mb-2"
+                    />
+                    <p className="text-xs text-gray-500">
+                      {currentUndressView?.description || "Adjust the slider to change the undress level"}
+                    </p>
+                  </div>
+                )}
               </TabsContent>
             )}
           </Tabs>
@@ -251,7 +336,7 @@ const TryOnPage: React.FC = () => {
             </div>
           )}
           
-          {undressMode && product.supports_undress && product.undress_options?.layers && (
+          {undressMode && hasUndressLayers && !hasUndressSequence && (
             <div className="mb-4">
               <p className="text-sm font-medium mb-2">Select Layer:</p>
               <div className="flex flex-wrap gap-2">
@@ -297,7 +382,10 @@ const TryOnPage: React.FC = () => {
                   {/* Undress mode indicator */}
                   {undressMode && (
                     <div className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                      Undress Mode: {currentLayer || 'Default'}
+                      {hasUndressSequence && currentUndressView 
+                        ? `Undress: ${currentUndressView.name}`
+                        : `Undress Mode: ${currentLayer || 'Default'}`
+                      }
                     </div>
                   )}
                   
@@ -307,7 +395,7 @@ const TryOnPage: React.FC = () => {
                   />
                 </div>
                 
-                <div className="flex justify-between p-4">
+                <div className="flex flex-wrap justify-between p-4 gap-2">
                   <Button onClick={takeSnapshot}>
                     Take Snapshot
                   </Button>
@@ -319,6 +407,22 @@ const TryOnPage: React.FC = () => {
                     >
                       {undressMode ? "Disable Undress" : "Enable Undress"}
                     </Button>
+                  )}
+                  
+                  {undressMode && hasUndressSequence && (
+                    <div className="w-full mt-2">
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>Fully Dressed</span>
+                        <span>Undressed</span>
+                      </div>
+                      <Slider
+                        value={[currentUndressLevel]}
+                        min={1}
+                        max={product.undress_level || 1}
+                        step={1}
+                        onValueChange={handleUndressLevelChange}
+                      />
+                    </div>
                   )}
                 </div>
               </>
@@ -351,7 +455,11 @@ const TryOnPage: React.FC = () => {
           {product.supports_undress && (
             <>
               <li>Enable "Undress Mode" to see how the item looks without other layers</li>
-              <li>Select different layers to see various views</li>
+              {hasUndressSequence ? (
+                <li>Use the slider to adjust the undress level and see different stages</li>
+              ) : (
+                <li>Select different layers to see various views</li>
+              )}
             </>
           )}
           <li>Take a snapshot to save the image</li>
@@ -361,5 +469,7 @@ const TryOnPage: React.FC = () => {
     </div>
   );
 };
+
+export default TryOnPage;
 
 export default TryOnPage;
