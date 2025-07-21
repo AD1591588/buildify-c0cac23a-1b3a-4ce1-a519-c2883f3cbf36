@@ -384,5 +384,3 @@ const CustomTryOnPage: React.FC = () => {
 };
 
 export default CustomTryOnPage;
-
-export default CustomTryOnPage;

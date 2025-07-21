@@ -422,5 +422,3 @@ const ModelUploader: React.FC = () => {
 };
 
 export default ModelUploader;
-
-export default ModelUploader;

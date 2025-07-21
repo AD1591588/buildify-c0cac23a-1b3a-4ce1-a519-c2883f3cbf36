@@ -363,5 +363,3 @@ const TryOnPage: React.FC = () => {
 };
 
 export default TryOnPage;
-
-export default TryOnPage;
