@@ -15,6 +15,7 @@ import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import UploadModelPage from './pages/UploadModelPage';
 import CustomTryOnPage from './pages/CustomTryOnPage';
+import ImageUploadPage from './pages/ImageUploadPage';
 import './App.css';
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/image-upload" element={<ImageUploadPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </main>
